@@ -1,16 +1,13 @@
 extern crate git2;
 
-use git2::{Repository, Commit, ObjectType};
+use git2::{Repository, Commit};
 
 fn arg_to_path() -> String {
     std::env::args().nth(1).unwrap_or(".".to_string())
 }
 
 fn head_commit(repo: &Repository) -> Result<Commit, git2::Error> {
-    let obj = repo.head()?.resolve()?.peel(ObjectType::Commit)?;
-    obj.into_commit().map_err(
-        |_| git2::Error::from_str("no commit behind head")
-    )
+    repo.head()?.resolve()?.peel_to_commit()
 }
 
 fn main() {
