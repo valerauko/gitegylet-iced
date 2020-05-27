@@ -12,9 +12,6 @@ fn head_commit(repo: &Repository) -> Result<Commit, git2::Error> {
 
 fn main() {
     let repo = Repository::open(arg_to_path()).expect("failed to open repo");
-    let head = head_commit(&repo);
-    match head {
-        Ok(commit) => println!("{}", commit.message().unwrap_or("no message")),
-        Err(e) => println!("{}", e),
-    }
+    let mut refs = repo.references().expect("no references?");
+    refs.names().for_each(|name| println!("{}", name.unwrap_or("no ref name?")))
 }
