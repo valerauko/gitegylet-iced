@@ -2,7 +2,7 @@ extern crate git2;
 
 use git2::{Repository, Commit};
 use std::collections::BinaryHeap;
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, TimeZone, Local};
 use std::cmp::{Ordering};
 
 struct WrappedCommit<'a> {
@@ -45,10 +45,10 @@ fn head_commit(repo: &Repository) -> Result<Commit, git2::Error> {
     repo.head()?.resolve()?.peel_to_commit()
 }
 
-fn commit_time(commit: &Commit) -> DateTime<Utc> {
+fn commit_time(commit: &Commit) -> DateTime<Local> {
     let timestamp = commit.time().seconds();
 
-    DateTime::from_utc(NaiveDateTime::from_timestamp(timestamp, 0), Utc)
+    Local.from_utc_datetime(&NaiveDateTime::from_timestamp(timestamp, 0))
 }
 
 fn main() {
