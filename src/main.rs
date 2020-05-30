@@ -1,20 +1,12 @@
 extern crate git2;
 
-use git2::{Repository, Commit};
-use std::collections::BinaryHeap;
+use git2::{Repository, Commit, Oid, BranchType};
+use std::collections::{BinaryHeap, HashSet};
 use chrono::{DateTime, NaiveDateTime, TimeZone, Local};
 use std::cmp::{Ordering};
 
 struct WrappedCommit<'a> {
     commit: Commit<'a>
-}
-
-impl WrappedCommit<'_> {
-    pub fn new(c: Commit) -> WrappedCommit {
-        WrappedCommit {
-            commit: c
-        }
-    }
 }
 
 impl Ord for WrappedCommit<'_> {
@@ -32,6 +24,47 @@ impl PartialOrd for WrappedCommit<'_> {
 impl PartialEq for WrappedCommit<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.commit.id() == other.commit.id()
+    }
+}
+
+struct CommitList<'repo> {
+    tree: BinaryHeap<WrappedCommit<'repo>>,
+    ids: HashSet<Oid>
+}
+
+impl CommitList<'_> {
+    pub fn new<'repo>(repo: &'repo Repository) -> CommitList<'repo> {
+        let mut tree = BinaryHeap::new();
+        let mut ids = HashSet::new();
+        let branches = repo.branches(Some(BranchType::Local)).unwrap();
+        branches.map(|branch| branch.unwrap().0.get().peel_to_commit().unwrap())
+                .for_each(|commit| {
+                    ids.insert(commit.id());
+                    tree.push(WrappedCommit { commit: commit });
+                });
+
+        CommitList {
+            tree: tree,
+            ids: ids
+        }
+    }
+}
+
+impl <'repo>Iterator for CommitList<'repo> {
+    type Item = WrappedCommit<'repo>;
+
+    fn next(&mut self) -> Option<WrappedCommit<'repo>> {
+        if self.tree.is_empty() {
+            return None
+        }
+        let first = self.tree.pop().unwrap();
+        first.commit.parents().for_each(|parent| {
+            if !self.ids.contains(&parent.id()) {
+                self.ids.insert(parent.id());
+                self.tree.push(WrappedCommit { commit: parent });
+            }
+        });
+        Some(first)
     }
 }
 
@@ -53,14 +86,5 @@ fn commit_time(commit: &Commit) -> DateTime<Local> {
 
 fn main() {
     let repo = Repository::open(arg_to_path()).expect("failed to open repo");
-    let branches = repo.branches(Some(BranchType::Local)).expect("no references?");
-    let mut heap = BinaryHeap::new();
-
-    branches.map(|branch| branch.unwrap().0.get().peel_to_commit().unwrap())
-            .map(|one_ref| WrappedCommit::new(one_ref))
-            .for_each(|wc| heap.push(wc));
-
-    heap.into_sorted_vec().into_iter().for_each(|wc|
-        println!("{} {}", wc.commit.message().unwrap_or("no message"), commit_time(&wc.commit))
-    )
+    CommitList::new(&repo).for_each(|w| println!("{}", w.commit.message().unwrap_or("")))
 }
