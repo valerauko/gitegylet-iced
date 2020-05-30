@@ -53,11 +53,12 @@ fn commit_time(commit: &Commit) -> DateTime<Local> {
 
 fn main() {
     let repo = Repository::open(arg_to_path()).expect("failed to open repo");
-    let refs = repo.references().expect("no references?");
+    let branches = repo.branches(Some(BranchType::Local)).expect("no references?");
     let mut heap = BinaryHeap::new();
 
-    refs.map(|one_ref| WrappedCommit::new(one_ref.unwrap().peel_to_commit().unwrap()))
-        .for_each(|wc| heap.push(wc));
+    branches.map(|branch| branch.unwrap().0.get().peel_to_commit().unwrap())
+            .map(|one_ref| WrappedCommit::new(one_ref))
+            .for_each(|wc| heap.push(wc));
 
     heap.into_sorted_vec().into_iter().for_each(|wc|
         println!("{} {}", wc.commit.message().unwrap_or("no message"), commit_time(&wc.commit))
