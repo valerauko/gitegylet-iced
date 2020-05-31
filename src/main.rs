@@ -74,13 +74,8 @@ fn arg_to_path() -> String {
     std::env::args().nth(1).unwrap_or(".".to_string())
 }
 
-fn head_commit(repo: &Repository) -> Result<Commit, git2::Error> {
-    repo.head()?.resolve()?.peel_to_commit()
-}
-
 fn commit_time(commit: &Commit) -> DateTime<Local> {
     let timestamp = commit.time().seconds();
-
     Local.from_utc_datetime(&NaiveDateTime::from_timestamp(timestamp, 0))
 }
 
