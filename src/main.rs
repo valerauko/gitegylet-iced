@@ -81,5 +81,5 @@ fn commit_time(commit: &Commit) -> DateTime<Local> {
 
 fn main() {
     let repo = Repository::open(arg_to_path()).expect("failed to open repo");
-    CommitList::new(&repo).for_each(|w| println!("{}", w.commit.message().unwrap_or("")))
+    CommitList::new(&repo).for_each(|w| println!("{}", w.commit.summary().unwrap_or("")))
 }
