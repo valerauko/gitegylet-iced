@@ -123,11 +123,16 @@ impl Application for Gitegylet {
       .fold(
           Column::new(),
           |col, commit| {
-              let message = match commit.commit.message() {
+              let message = match commit.commit.summary() {
                   Some(msg) => msg.to_string(),
                   None => commit.commit.id().to_string()
               };
-              col.push(Text::new(message).size(16))
+              col.push(
+                Container::new(Text::new(message).size(16))
+                  .style(style::Commit)
+                  .width(Length::Fill)
+                  .padding(5)
+              )
           }
       );
 
@@ -141,17 +146,29 @@ impl Application for Gitegylet {
 }
 
 mod style {
-  use iced::container::{Style, StyleSheet};
+  use iced::{container};
   use iced::{Background, Color};
 
   pub struct Container;
 
-  impl StyleSheet for Container {
-    fn style(&self) -> Style {
-      Style {
-        background: Some(Background::Color(Color::from_rgb8(0x0, 0x0, 0x11))),
-        text_color: Some(Color::from_rgb8(0xee, 0xee, 0xee)),
-        ..Style::default()
+  impl container::StyleSheet for Container {
+    fn style(&self) -> container::Style {
+      container::Style {
+        background: Some(Background::Color(Color::from_rgb8(0x12, 0x12, 0x12))),
+        text_color: Some(Color::from_rgba8(0xff, 0xff, 0xff, 0.6)),
+        ..container::Style::default()
+      }
+    }
+  }
+
+  pub struct Commit;
+
+  impl container::StyleSheet for Commit {
+    fn style(&self) -> container::Style {
+      container::Style {
+        background: Some(Background::Color(Color::from_rgb8(0x1e, 0x1e, 0x1e))),
+        text_color: Some(Color::from_rgba8(0xff, 0xff, 0xff, 0.6)),
+        ..container::Style::default()
       }
     }
   }
