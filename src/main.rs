@@ -1,10 +1,12 @@
+use std::cmp::Ordering;
+use std::collections::{BinaryHeap, HashSet};
 use std::env::args;
-use git2::{Repository, BranchType, Error, Oid, Branch};
-use iced::{Application, Command, Element, Settings, Column, Scrollable, Length, Color};
+
+use git2::{BranchType, Repository};
+use iced::{Application, Color, Column, Command, Element, Length, Settings, Background};
 use iced::executor::Null;
-use std::collections::{BTreeMap, BinaryHeap, HashSet};
-use std::cmp::{Ordering, max, min};
 use iced_native::{Container, Text};
+use iced::widget::container::Style;
 
 struct Commit<'a> {
   commit: git2::Commit<'a>
@@ -30,11 +32,17 @@ impl PartialEq for Commit<'_> {
 
 impl Eq for Commit<'_> {}
 
-struct Iny {
+// impl Commit {
+//   fn view(&mut self) -> Element<'_, Gitegylet::Message> {
+//
+//   }
+// }
+
+struct Gitegylet {
   repo: Repository
 }
 
-impl Iny {
+impl Gitegylet {
   fn commits(&self) -> Vec<Commit> {
     let branches = self.repo.branches(
       Some(BranchType::Local)
@@ -58,9 +66,10 @@ impl Iny {
     if heap.is_empty() { return vec![] }
 
     let mut vector: Vec<Commit> = vec![];
-    while vector.len() < 50 {
+    while vector.len() < 60 {
       match heap.pop() {
         Some(commit) => {
+          println!("{}", commit.commit.summary().unwrap_or("msg missing"));
           commit.commit.parents().for_each(|parent| {
             if !ids.contains(&parent.id()) {
               ids.insert(parent.id());
@@ -76,12 +85,12 @@ impl Iny {
   }
 }
 
-impl Application for Iny {
+impl Application for Gitegylet {
   type Executor = Null;
   type Message = ();
   type Flags = ();
 
-  fn new(flags: Self::Flags) -> (Self, Command<Self::Message>) {
+  fn new(_flags: Self::Flags) -> (Self, Command<Self::Message>) {
     let path = args().nth(1).unwrap_or(".".to_string());
     let repo = Repository::open(path)
       .expect("Failed to open repository");
@@ -90,17 +99,17 @@ impl Application for Iny {
   }
 
   fn title(&self) -> String {
-    let iny = "Iny".to_string();
+    let gitegylet = "Gitegylet".to_string();
 
     match self.repo.workdir() {
       Some(pwd) => match pwd.file_name() {
         Some(file) => match file.to_str() {
-          Some(name) => format!("{} | {}", name, iny),
-          None => iny
+          Some(name) => format!("{} | {}", name, gitegylet),
+          None => gitegylet
         },
-        None => iny
+        None => gitegylet
       },
-      None => iny
+      None => gitegylet
     }
   }
 
@@ -109,7 +118,9 @@ impl Application for Iny {
   }
 
   fn view(&mut self) -> Element<'_, Self::Message> {
-    let commits = self.commits()
+    let commits = self.commits();
+    println!("{}", commits.len());
+    let column = commits
       .iter()
       .fold(
           Column::new().spacing(10),
@@ -122,7 +133,8 @@ impl Application for Iny {
           }
       );
 
-    Container::new(commits)
+    Container::new(column)
+      .style(style::Container)
       .width(Length::Fill)
       .height(Length::Fill)
       .padding(10)
@@ -130,6 +142,23 @@ impl Application for Iny {
   }
 }
 
+mod style {
+  use iced::container::{Style, StyleSheet};
+  use iced::{Background, Color};
+
+  pub struct Container;
+
+  impl StyleSheet for Container {
+    fn style(&self) -> Style {
+      Style {
+        background: Some(Background::Color(Color::from_rgb8(0x0, 0x0, 0x11))),
+        text_color: Some(Color::from_rgb8(0xee, 0xee, 0xee)),
+        ..Style::default()
+      }
+    }
+  }
+}
+
 pub fn main() {
-  Iny::run(Settings::default())
+  Gitegylet::run(Settings::default())
 }
