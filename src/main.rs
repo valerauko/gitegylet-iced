@@ -3,7 +3,7 @@ use std::collections::{BinaryHeap, HashSet};
 use std::env::args;
 
 use git2::{BranchType, Repository};
-use iced::{Application, Color, Column, Command, Element, Length, Settings, Background};
+use iced::{Application, Color, Column, Command, Element, Length, Settings, Background, Row};
 use iced::executor::Null;
 use iced_native::{Container, Text};
 use iced::widget::container::Style;
@@ -69,7 +69,6 @@ impl Gitegylet {
     while vector.len() < 60 {
       match heap.pop() {
         Some(commit) => {
-          println!("{}", commit.commit.summary().unwrap_or("msg missing"));
           commit.commit.parents().for_each(|parent| {
             if !ids.contains(&parent.id()) {
               ids.insert(parent.id());
@@ -119,11 +118,10 @@ impl Application for Gitegylet {
 
   fn view(&mut self) -> Element<'_, Self::Message> {
     let commits = self.commits();
-    println!("{}", commits.len());
     let column = commits
       .iter()
       .fold(
-          Column::new().spacing(10),
+          Column::new(),
           |col, commit| {
               let message = match commit.commit.message() {
                   Some(msg) => msg.to_string(),
