@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashSet};
 use std::env::args;
 
-use git2::{BranchType, Branches, Repository};
+use git2::{BranchType, Repository};
 use iced::executor::Null;
 use iced::{
     scrollable, Application, Checkbox, Column, Command, Container, Element, Length, Row,
@@ -37,7 +37,6 @@ impl Application for App {
                 .fold(vec![], |mut aggr, branch| match branch {
                     Ok((branch, _type)) => match branch.name() {
                         Ok(Some(name)) => {
-                            let name = branch.name().unwrap().unwrap();
                             aggr.push(Branch::new(name.to_string()));
                             aggr
                         }
