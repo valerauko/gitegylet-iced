@@ -75,7 +75,7 @@ impl Application for Repo {
     }
 
     fn view(&mut self) -> Element<'_, Self::Message> {
-        let column =
+        let branches =
             self.branches
                 .iter_mut()
                 .enumerate()
@@ -87,8 +87,11 @@ impl Application for Repo {
                     )
                 });
 
-        Container::new(column)
-            // .style(style::Container)
+        let row = Row::new().push(branches);
+
+        Container::new(row)
+            .style(style::Container)
+            .height(Length::Fill)
             .width(Length::Fill)
             .into()
     }
@@ -119,8 +122,9 @@ impl Branch {
     }
 
     fn view(&mut self) -> Element<BranchMessage> {
-        let checkbox =
-            Checkbox::new(self.selected, &self.name, BranchMessage::Selected).width(Length::Fill);
+        let checkbox = Checkbox::new(self.selected, &self.name, BranchMessage::Selected)
+            // .width(Length::Fill)
+            .style(style::Branch);
 
         Row::new().padding(2).push(checkbox).into()
     }
@@ -256,7 +260,7 @@ impl Application for Gitegylet {
             };
 
             let element = Container::new(Text::new(message))
-                .style(style::Commit)
+                // .style(style::Commit)
                 .width(Length::Fill);
 
             col.push(element)
