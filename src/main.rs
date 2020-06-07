@@ -10,10 +10,10 @@ use iced::{
 };
 
 pub fn main() {
-    App::run(Settings::default())
+    Repo::run(Settings::default())
 }
 
-struct App {
+struct Repo {
     repo: git2::Repository,
     branches: Vec<Branch>,
 }
@@ -23,7 +23,7 @@ enum Message {
     BranchMessage(usize, BranchMessage),
 }
 
-impl Application for App {
+impl Application for Repo {
     type Executor = Null;
     type Message = Message;
     type Flags = ();
