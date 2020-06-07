@@ -18,6 +18,55 @@ struct Repo {
     branches: Vec<Branch>,
 }
 
+impl Repo {
+    fn commits(&self) -> Vec<Commit> {
+        let mut ids = HashSet::new();
+        let mut heap = BinaryHeap::new();
+        self.branches
+            .iter()
+            .filter(|Branch { selected, .. }| *selected)
+            .for_each(
+                |Branch { name, .. }| match self.repo.find_branch(name, BranchType::Local) {
+                    Ok(branch) => match branch.get().peel_to_commit() {
+                        Ok(commit) => {
+                            ids.insert(commit.id());
+                            heap.push(Commit {
+                                commit,
+                                selected: false,
+                            });
+                        }
+                        Err(_) => {}
+                    },
+                    Err(_) => {}
+                },
+            );
+
+        if heap.is_empty() {
+            return vec![];
+        }
+
+        let mut vector: Vec<Commit> = vec![];
+        while vector.len() < 60 {
+            match heap.pop() {
+                Some(commit) => {
+                    commit.commit.parents().for_each(|parent| {
+                        if !ids.contains(&parent.id()) {
+                            ids.insert(parent.id());
+                            heap.push(Commit {
+                                commit: parent,
+                                selected: false,
+                            });
+                        }
+                    });
+                    vector.push(commit);
+                }
+                None => break,
+            }
+        }
+        return vector;
+    }
+}
+
 #[derive(Debug, Clone)]
 enum Message {
     BranchMessage(usize, BranchMessage),
@@ -75,6 +124,21 @@ impl Application for Repo {
     }
 
     fn view(&mut self) -> Element<'_, Self::Message> {
+        let c = self.commits();
+        let commits = c.iter().fold(Column::new(), |col, commit| {
+            let message = match commit.commit.summary() {
+                Some(msg) => msg.to_string(),
+                None => commit.commit.id().to_string(),
+            };
+
+            let element = Container::new(Text::new(message))
+                // .style(style::Commit)
+                .width(Length::Fill);
+
+            col.push(element)
+        });
+        drop(c);
+
         let branches =
             self.branches
                 .iter_mut()
@@ -87,7 +151,7 @@ impl Application for Repo {
                     )
                 });
 
-        let row = Row::new().push(branches);
+        let row = Row::new().push(branches).push(commits);
 
         Container::new(row)
             .style(style::Container)
