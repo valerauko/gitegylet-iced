@@ -2,11 +2,11 @@ use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashSet};
 use std::env::args;
 
-use git2::{BranchType, Repository};
+use git2::{BranchType, Branches, Repository};
 use iced::executor::Null;
 use iced::{
-    scrollable, Application, Checkbox, Column, Command, Container, Element, Length, Scrollable,
-    Settings, Text,
+    scrollable, Application, Checkbox, Column, Command, Container, Element, Length, Row,
+    Scrollable, Settings, Text,
 };
 
 pub fn main() {
@@ -15,12 +15,12 @@ pub fn main() {
 
 struct App {
     repo: git2::Repository,
-    selected_branches: HashSet<String>,
+    branches: Vec<Branch>,
 }
 
 #[derive(Debug, Clone)]
 enum Message {
-    BranchSelected(String, bool),
+    BranchMessage(usize, BranchMessage),
 }
 
 impl Application for App {
@@ -31,27 +31,22 @@ impl Application for App {
     fn new(_flags: Self::Flags) -> (Self, Command<Self::Message>) {
         let path = args().nth(1).unwrap_or(".".to_string());
         let repo = Repository::open(path).expect("Failed to open repository");
-        let selected_branches = repo.branches(Some(BranchType::Local)).unwrap().fold(
-            HashSet::new(),
-            |mut aggr, branch| match branch {
-                Ok((branch, _type)) => match branch.name() {
-                    Ok(Some(name)) => {
-                        aggr.insert(name.to_string());
-                        aggr
-                    }
-                    _ => aggr,
-                },
-                Err(_) => aggr,
-            },
-        );
+        let branches =
+            repo.branches(Some(BranchType::Local))
+                .unwrap()
+                .fold(vec![], |mut aggr, branch| match branch {
+                    Ok((branch, _type)) => match branch.name() {
+                        Ok(Some(name)) => {
+                            let name = branch.name().unwrap().unwrap();
+                            aggr.push(Branch::new(name.to_string()));
+                            aggr
+                        }
+                        _ => aggr,
+                    },
+                    Err(_) => aggr,
+                });
 
-        (
-            Self {
-                repo,
-                selected_branches,
-            },
-            Command::none(),
-        )
+        (Self { repo, branches }, Command::none())
     }
 
     fn title(&self) -> String {
@@ -71,12 +66,9 @@ impl Application for App {
 
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
         match message {
-            Message::BranchSelected(name, selected) => {
-                let name = name.clone();
-                if selected {
-                    self.selected_branches.insert(name);
-                } else {
-                    self.selected_branches.remove(&name);
+            Message::BranchMessage(i, message) => {
+                if let Some(branch) = self.branches.get_mut(i) {
+                    branch.update(message);
                 }
                 Command::none()
             }
@@ -84,22 +76,17 @@ impl Application for App {
     }
 
     fn view(&mut self) -> Element<'_, Self::Message> {
-        let branches = self.repo.branches(Some(BranchType::Local)).unwrap();
-        let column = branches.fold(Column::new(), |col, branch| match branch {
-            Ok((branch, _type)) => match branch.name() {
-                Ok(Some(name)) => {
-                    let selected = self.selected_branches.contains(name);
-                    let line = Checkbox::new(selected, "name", move |message| {
-                        Message::BranchSelected("foo".to_string(), message) // can't send branch name
-                    })
-                    .width(Length::Fill);
-                    col.push(line)
-                }
-                Ok(_) => col,
-                Err(_) => col,
-            },
-            Err(_) => col,
-        });
+        let column =
+            self.branches
+                .iter_mut()
+                .enumerate()
+                .fold(Column::new(), |col, (i, branch)| {
+                    col.push(
+                        branch
+                            .view()
+                            .map(move |message| Message::BranchMessage(i, message)),
+                    )
+                });
 
         Container::new(column)
             // .style(style::Container)
@@ -108,20 +95,37 @@ impl Application for App {
     }
 }
 
-// struct Branch<'a> {
-//     branch: git2::Branch<'a>,
-//     selected: bool,
-// }
-//
-// impl Branch<'_> {
-//     pub fn current(&self) -> bool {
-//         self.branch.is_head()
-//     }
-//
-//     pub fn local(&self) -> bool {
-//         !self.branch.get().is_remote()
-//     }
-// }
+#[derive(Debug, Clone)]
+enum BranchMessage {
+    Selected(bool),
+}
+
+struct Branch {
+    name: String,
+    selected: bool,
+}
+
+impl Branch {
+    fn new(name: String) -> Self {
+        Self {
+            name,
+            selected: true,
+        }
+    }
+
+    fn update(&mut self, message: BranchMessage) {
+        match message {
+            BranchMessage::Selected(selected) => self.selected = selected,
+        }
+    }
+
+    fn view(&mut self) -> Element<BranchMessage> {
+        let checkbox =
+            Checkbox::new(self.selected, &self.name, BranchMessage::Selected).width(Length::Fill);
+
+        Row::new().padding(2).push(checkbox).into()
+    }
+}
 
 struct Commit<'a> {
     commit: git2::Commit<'a>,
