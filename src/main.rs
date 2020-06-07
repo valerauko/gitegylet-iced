@@ -132,11 +132,11 @@ impl Application for Gitegylet {
                 None => commit.commit.id().to_string(),
             };
 
-            let checkbox = Checkbox::new(commit.selected, &message, CommitMessage::Selected)
-                .width(Length::Fill)
-                .style(style::Commit);
+            let element = Container::new(Text::new(message))
+                .style(style::Commit)
+                .width(Length::Fill);
 
-            col.push(checkbox)
+            col.push(element)
         });
 
         Container::new(column)
