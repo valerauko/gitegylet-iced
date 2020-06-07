@@ -4,11 +4,124 @@ use std::env::args;
 
 use git2::{BranchType, Repository};
 use iced::executor::Null;
-use iced::widget::container::Style;
 use iced::{
-    Application, Background, Checkbox, Color, Column, Command, Element, Length, Row, Settings,
+    scrollable, Application, Checkbox, Column, Command, Container, Element, Length, Scrollable,
+    Settings, Text,
 };
-use iced_native::{button, Container, Text};
+
+pub fn main() {
+    App::run(Settings::default())
+}
+
+struct App {
+    repo: git2::Repository,
+    selected_branches: HashSet<String>,
+}
+
+#[derive(Debug, Clone)]
+enum Message {
+    BranchSelected(String, bool),
+}
+
+impl Application for App {
+    type Executor = Null;
+    type Message = Message;
+    type Flags = ();
+
+    fn new(_flags: Self::Flags) -> (Self, Command<Self::Message>) {
+        let path = args().nth(1).unwrap_or(".".to_string());
+        let repo = Repository::open(path).expect("Failed to open repository");
+        let selected_branches = repo.branches(Some(BranchType::Local)).unwrap().fold(
+            HashSet::new(),
+            |mut aggr, branch| match branch {
+                Ok((branch, _type)) => match branch.name() {
+                    Ok(Some(name)) => {
+                        aggr.insert(name.to_string());
+                        aggr
+                    }
+                    _ => aggr,
+                },
+                Err(_) => aggr,
+            },
+        );
+
+        (
+            Self {
+                repo,
+                selected_branches,
+            },
+            Command::none(),
+        )
+    }
+
+    fn title(&self) -> String {
+        let gitegylet = "Gitegylet".to_string();
+
+        match self.repo.workdir() {
+            Some(pwd) => match pwd.file_name() {
+                Some(file) => match file.to_str() {
+                    Some(name) => format!("{} | {}", name, gitegylet),
+                    None => gitegylet,
+                },
+                None => gitegylet,
+            },
+            None => gitegylet,
+        }
+    }
+
+    fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
+        match message {
+            Message::BranchSelected(name, selected) => {
+                let name = name.clone();
+                if selected {
+                    self.selected_branches.insert(name);
+                } else {
+                    self.selected_branches.remove(&name);
+                }
+                Command::none()
+            }
+        }
+    }
+
+    fn view(&mut self) -> Element<'_, Self::Message> {
+        let branches = self.repo.branches(Some(BranchType::Local)).unwrap();
+        let column = branches.fold(Column::new(), |col, branch| match branch {
+            Ok((branch, _type)) => match branch.name() {
+                Ok(Some(name)) => {
+                    let selected = self.selected_branches.contains(name);
+                    let line = Checkbox::new(selected, "name", move |message| {
+                        Message::BranchSelected("foo".to_string(), message) // can't send branch name
+                    })
+                    .width(Length::Fill);
+                    col.push(line)
+                }
+                Ok(_) => col,
+                Err(_) => col,
+            },
+            Err(_) => col,
+        });
+
+        Container::new(column)
+            // .style(style::Container)
+            .width(Length::Fill)
+            .into()
+    }
+}
+
+// struct Branch<'a> {
+//     branch: git2::Branch<'a>,
+//     selected: bool,
+// }
+//
+// impl Branch<'_> {
+//     pub fn current(&self) -> bool {
+//         self.branch.is_head()
+//     }
+//
+//     pub fn local(&self) -> bool {
+//         !self.branch.get().is_remote()
+//     }
+// }
 
 struct Commit<'a> {
     commit: git2::Commit<'a>,
@@ -43,6 +156,7 @@ impl Eq for Commit<'_> {}
 
 struct Gitegylet {
     repo: Repository,
+    scroll: scrollable::State,
 }
 
 impl Gitegylet {
@@ -102,7 +216,13 @@ impl Application for Gitegylet {
         let path = args().nth(1).unwrap_or(".".to_string());
         let repo = Repository::open(path).expect("Failed to open repository");
 
-        (Self { repo }, Command::none())
+        (
+            Self {
+                repo,
+                scroll: scrollable::State::default(),
+            },
+            Command::none(),
+        )
     }
 
     fn title(&self) -> String {
@@ -139,17 +259,17 @@ impl Application for Gitegylet {
             col.push(element)
         });
 
-        Container::new(column)
+        drop(commits);
+
+        let container = Container::new(column)
             .style(style::Container)
-            .width(Length::Fill)
+            .width(Length::Fill);
+
+        Scrollable::new(&mut self.scroll)
+            .push(container)
             .height(Length::Fill)
-            .padding(10)
             .into()
     }
 }
 
 mod style;
-
-pub fn main() {
-    Gitegylet::run(Settings::default())
-}

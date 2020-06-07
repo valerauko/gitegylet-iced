@@ -1,4 +1,4 @@
-use iced::{checkbox, container};
+use iced::container;
 use iced::{Background, Color};
 
 pub struct Container;
