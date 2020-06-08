@@ -30,10 +30,7 @@ impl Repo {
                     Ok(branch) => match branch.get().peel_to_commit() {
                         Ok(commit) => {
                             ids.insert(commit.id());
-                            heap.push(Commit {
-                                commit,
-                                selected: false,
-                            });
+                            heap.push(Commit::from_git2(commit));
                         }
                         Err(_) => {}
                     },
@@ -49,15 +46,16 @@ impl Repo {
         while vector.len() < 60 {
             match heap.pop() {
                 Some(commit) => {
-                    commit.commit.parents().for_each(|parent| {
-                        if !ids.contains(&parent.id()) {
-                            ids.insert(parent.id());
-                            heap.push(Commit {
-                                commit: parent,
-                                selected: false,
-                            });
-                        }
-                    });
+                    self.repo
+                        .find_commit(commit.id)
+                        .unwrap()
+                        .parents()
+                        .for_each(|parent| {
+                            if !ids.contains(&parent.id()) {
+                                ids.insert(parent.id());
+                                heap.push(Commit::from_git2(parent));
+                            }
+                        });
                     vector.push(commit);
                 }
                 None => break,
@@ -70,6 +68,7 @@ impl Repo {
 #[derive(Debug, Clone)]
 enum Message {
     BranchMessage(usize, BranchMessage),
+    CommitMessage(usize, CommitMessage),
 }
 
 impl Application for Repo {
@@ -120,24 +119,22 @@ impl Application for Repo {
                 }
                 Command::none()
             }
+            Message::CommitMessage(i, message) => Command::none(),
         }
     }
 
     fn view(&mut self) -> Element<'_, Self::Message> {
-        let c = self.commits();
-        let commits = c.iter().fold(Column::new(), |col, commit| {
-            let message = match commit.commit.summary() {
-                Some(msg) => msg.to_string(),
-                None => commit.commit.id().to_string(),
-            };
-
-            let element = Container::new(Text::new(message))
-                // .style(style::Commit)
-                .width(Length::Fill);
-
-            col.push(element)
-        });
-        drop(c);
+        let mut commit_vec = self.commits().to_owned();
+        let commits = commit_vec
+            .iter_mut()
+            .enumerate()
+            .fold(Column::new(), |col, (i, commit)| {
+                col.push(
+                    commit
+                        .view()
+                        .map(move |message| Message::CommitMessage(i, message)),
+                )
+            });
 
         let branches =
             self.branches
@@ -195,13 +192,53 @@ impl Branch {
 }
 
 struct Commit<'a> {
-    commit: git2::Commit<'a>,
+    id: git2::Oid,
+    time: git2::Time,
+    summary: String,
+    message: String,
+    author: git2::Signature<'a>,
     selected: bool,
+}
+
+#[derive(Debug, Clone)]
+enum CommitMessage {
+    Selected(bool),
+}
+
+impl Commit<'_> {
+    fn from_git2(commit: git2::Commit) -> Self {
+        Self {
+            id: commit.id(),
+            time: commit.time(),
+            summary: match commit.summary() {
+                Some(summary) => summary.to_string(),
+                None => commit.id().to_string(),
+            },
+            message: match commit.message() {
+                Some(msg) => msg.to_string(),
+                None => commit.id().to_string(),
+            },
+            author: commit.author().to_owned(),
+            selected: false,
+        }
+    }
+
+    fn update(&mut self, message: CommitMessage) {
+        match message {
+            CommitMessage::Selected(selected) => self.selected = selected,
+        }
+    }
+
+    fn view(&mut self) -> Element<CommitMessage> {
+        let text = Text::new(self.summary.clone());
+
+        Row::new().padding(2).push(text).into()
+    }
 }
 
 impl Ord for Commit<'_> {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.commit.time().cmp(&other.commit.time())
+        self.time.cmp(&other.time)
     }
 }
 
@@ -213,134 +250,15 @@ impl PartialOrd for Commit<'_> {
 
 impl PartialEq for Commit<'_> {
     fn eq(&self, other: &Self) -> bool {
-        self.commit.id() == other.commit.id()
+        self.id == other.id
     }
 }
 
 impl Eq for Commit<'_> {}
 
-// impl Commit {
-//   fn view(&mut self) -> Element<'_, Gitegylet::Message> {
-//
-//   }
-// }
-
-struct Gitegylet {
-    repo: Repository,
-    scroll: scrollable::State,
-}
-
-impl Gitegylet {
-    fn commits(&self) -> Vec<Commit> {
-        let branches = self.repo.branches(Some(BranchType::Local)).unwrap();
-        let mut ids = HashSet::new();
-        let mut heap = BinaryHeap::new();
-        branches.for_each(|b| match b {
-            Ok((branch, _bt)) => match branch.get().peel_to_commit() {
-                Ok(commit) => {
-                    ids.insert(commit.id());
-                    heap.push(Commit {
-                        commit,
-                        selected: false,
-                    });
-                }
-                Err(_) => {}
-            },
-            Err(_) => {}
-        });
-        if heap.is_empty() {
-            return vec![];
-        }
-
-        let mut vector: Vec<Commit> = vec![];
-        while vector.len() < 60 {
-            match heap.pop() {
-                Some(commit) => {
-                    commit.commit.parents().for_each(|parent| {
-                        if !ids.contains(&parent.id()) {
-                            ids.insert(parent.id());
-                            heap.push(Commit {
-                                commit: parent,
-                                selected: false,
-                            });
-                        }
-                    });
-                    vector.push(commit);
-                }
-                None => break,
-            }
-        }
-        return vector;
-    }
-}
-
-pub enum CommitMessage {
-    Selected(bool),
-}
-
-impl Application for Gitegylet {
-    type Executor = Null;
-    type Message = ();
-    type Flags = ();
-
-    fn new(_flags: Self::Flags) -> (Self, Command<Self::Message>) {
-        let path = args().nth(1).unwrap_or(".".to_string());
-        let repo = Repository::open(path).expect("Failed to open repository");
-
-        (
-            Self {
-                repo,
-                scroll: scrollable::State::default(),
-            },
-            Command::none(),
-        )
-    }
-
-    fn title(&self) -> String {
-        let gitegylet = "Gitegylet".to_string();
-
-        match self.repo.workdir() {
-            Some(pwd) => match pwd.file_name() {
-                Some(file) => match file.to_str() {
-                    Some(name) => format!("{} | {}", name, gitegylet),
-                    None => gitegylet,
-                },
-                None => gitegylet,
-            },
-            None => gitegylet,
-        }
-    }
-
-    fn update(&mut self, _message: Self::Message) -> Command<Self::Message> {
-        Command::none()
-    }
-
-    fn view(&mut self) -> Element<'_, Self::Message> {
-        let commits = self.commits();
-        let column = commits.iter().fold(Column::new(), |col, commit| {
-            let message = match commit.commit.summary() {
-                Some(msg) => msg.to_string(),
-                None => commit.commit.id().to_string(),
-            };
-
-            let element = Container::new(Text::new(message))
-                // .style(style::Commit)
-                .width(Length::Fill);
-
-            col.push(element)
-        });
-
-        drop(commits);
-
-        let container = Container::new(column)
-            .style(style::Container)
-            .width(Length::Fill);
-
-        Scrollable::new(&mut self.scroll)
-            .push(container)
-            .height(Length::Fill)
-            .into()
-    }
-}
+// Scrollable::new(&mut self.scroll)
+// .push(container)
+// .height(Length::Fill)
+// .into()
 
 mod style;
