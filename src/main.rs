@@ -16,53 +16,8 @@ pub fn main() {
 struct Repo {
     repo: git2::Repository,
     branches: Vec<Branch>,
-}
-
-impl Repo {
-    fn commits(&self) -> Vec<Commit> {
-        let mut ids = HashSet::new();
-        let mut heap = BinaryHeap::new();
-        self.branches
-            .iter()
-            .filter(|Branch { selected, .. }| *selected)
-            .for_each(
-                |Branch { name, .. }| match self.repo.find_branch(name, BranchType::Local) {
-                    Ok(branch) => match branch.get().peel_to_commit() {
-                        Ok(commit) => {
-                            ids.insert(commit.id());
-                            heap.push(Commit::from_git2(commit));
-                        }
-                        Err(_) => {}
-                    },
-                    Err(_) => {}
-                },
-            );
-
-        if heap.is_empty() {
-            return vec![];
-        }
-
-        let mut vector: Vec<Commit> = vec![];
-        while vector.len() < 60 {
-            match heap.pop() {
-                Some(commit) => {
-                    self.repo
-                        .find_commit(commit.id)
-                        .unwrap()
-                        .parents()
-                        .for_each(|parent| {
-                            if !ids.contains(&parent.id()) {
-                                ids.insert(parent.id());
-                                heap.push(Commit::from_git2(parent));
-                            }
-                        });
-                    vector.push(commit);
-                }
-                None => break,
-            }
-        }
-        return vector;
-    }
+    commits: Commits,
+    // selected_commit: Commit,
 }
 
 #[derive(Debug, Clone)]
@@ -92,8 +47,16 @@ impl Application for Repo {
                     },
                     Err(_) => aggr,
                 });
+        let commits = Commits::new(&repo, &branches, 50);
 
-        (Self { repo, branches }, Command::none())
+        (
+            Self {
+                repo,
+                branches,
+                commits,
+            },
+            Command::none(),
+        )
     }
 
     fn title(&self) -> String {
@@ -117,25 +80,14 @@ impl Application for Repo {
                 if let Some(branch) = self.branches.get_mut(i) {
                     branch.update(message);
                 }
+                self.commits = Commits::new(&self.repo, &self.branches, 50);
                 Command::none()
             }
-            Message::CommitMessage(i, message) => Command::none(),
+            Message::CommitMessage(_i, _message) => Command::none(),
         }
     }
 
     fn view(&mut self) -> Element<'_, Self::Message> {
-        let mut commit_vec = self.commits().to_owned();
-        let commits = commit_vec
-            .iter_mut()
-            .enumerate()
-            .fold(Column::new(), |col, (i, commit)| {
-                col.push(
-                    commit
-                        .view()
-                        .map(move |message| Message::CommitMessage(i, message)),
-                )
-            });
-
         let branches =
             self.branches
                 .iter_mut()
@@ -148,9 +100,7 @@ impl Application for Repo {
                     )
                 });
 
-        let row = Row::new().push(branches).push(commits);
-
-        Container::new(row)
+        Container::new(Row::new().push(branches).push(self.commits.view()))
             .style(style::Container)
             .height(Length::Fill)
             .width(Length::Fill)
@@ -163,6 +113,7 @@ enum BranchMessage {
     Selected(bool),
 }
 
+#[derive(Clone)]
 struct Branch {
     name: String,
     selected: bool,
@@ -191,12 +142,95 @@ impl Branch {
     }
 }
 
-struct Commit<'a> {
+struct Commits {
+    commits: Vec<Commit>,
+    scroll: scrollable::State,
+}
+
+impl Commits {
+    fn default() -> Self {
+        Self {
+            commits: vec![],
+            scroll: scrollable::State::default(),
+        }
+    }
+
+    fn new(repo: &git2::Repository, branches: &[Branch], count: usize) -> Self {
+        let mut ids = HashSet::new();
+        let mut heap = BinaryHeap::new();
+        branches
+            .iter()
+            .filter(|Branch { selected, .. }| *selected)
+            .for_each(
+                |Branch { name, .. }| match repo.find_branch(name, BranchType::Local) {
+                    Ok(branch) => match branch.get().peel_to_commit() {
+                        Ok(commit) => {
+                            ids.insert(commit.id());
+                            heap.push(Commit::from_git2(commit));
+                        }
+                        Err(_) => {}
+                    },
+                    Err(_) => {}
+                },
+            );
+
+        if heap.is_empty() {
+            return Self::default();
+        }
+
+        let mut commits: Vec<Commit> = vec![];
+        while commits.len() < count {
+            match heap.pop() {
+                Some(commit) => {
+                    repo.find_commit(commit.id)
+                        .unwrap()
+                        .parents()
+                        .for_each(|parent| {
+                            if !ids.contains(&parent.id()) {
+                                ids.insert(parent.id());
+                                heap.push(Commit::from_git2(parent));
+                            }
+                        });
+                    commits.push(commit);
+                }
+                None => break,
+            }
+        }
+        Self {
+            commits,
+            scroll: scrollable::State::default(),
+        }
+    }
+
+    fn update(&mut self, _message: CommitMessage) {}
+
+    fn view(&mut self) -> Element<Message> {
+        let commits =
+            self.commits
+                .iter_mut()
+                .enumerate()
+                .fold(Column::new(), |col, (i, commit)| {
+                    col.push(
+                        commit
+                            .view()
+                            .map(move |message| Message::CommitMessage(i, message)),
+                    )
+                });
+
+        Scrollable::new(&mut self.scroll)
+            .push(commits)
+            .height(Length::Fill)
+            .into()
+    }
+}
+
+#[derive(Clone)]
+struct Commit {
     id: git2::Oid,
     time: git2::Time,
     summary: String,
     message: String,
-    author: git2::Signature<'a>,
+    author: git2::Signature<'static>,
     selected: bool,
 }
 
@@ -205,7 +239,7 @@ enum CommitMessage {
     Selected(bool),
 }
 
-impl Commit<'_> {
+impl Commit {
     fn from_git2(commit: git2::Commit) -> Self {
         Self {
             id: commit.id(),
@@ -236,29 +270,24 @@ impl Commit<'_> {
     }
 }
 
-impl Ord for Commit<'_> {
+impl Ord for Commit {
     fn cmp(&self, other: &Self) -> Ordering {
         self.time.cmp(&other.time)
     }
 }
 
-impl PartialOrd for Commit<'_> {
+impl PartialOrd for Commit {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl PartialEq for Commit<'_> {
+impl PartialEq for Commit {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
     }
 }
 
-impl Eq for Commit<'_> {}
-
-// Scrollable::new(&mut self.scroll)
-// .push(container)
-// .height(Length::Fill)
-// .into()
+impl Eq for Commit {}
 
 mod style;
