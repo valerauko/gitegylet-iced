@@ -4,10 +4,12 @@ use std::env::args;
 
 use git2::{BranchType, Repository};
 use iced::executor::Null;
+use iced::widget::container::Style;
 use iced::{
-    scrollable, Application, Checkbox, Column, Command, Container, Element, Length, Row,
-    Scrollable, Settings, Text,
+    container, scrollable, Application, Checkbox, Column, Command, Container, Element, Length, Row,
+    Scrollable, Settings, Text, VerticalAlignment,
 };
+use iced_native::Widget;
 
 pub fn main() {
     Repo::run(Settings::default())
@@ -40,7 +42,11 @@ impl Application for Repo {
                 .fold(vec![], |mut aggr, branch| match branch {
                     Ok((branch, _type)) => match branch.name() {
                         Ok(Some(name)) => {
-                            aggr.push(Branch::new(name.to_string()));
+                            aggr.push(Branch {
+                                name: name.to_string(),
+                                selected: true,
+                                head: branch.is_head(),
+                            });
                             aggr
                         }
                         _ => aggr,
@@ -88,20 +94,19 @@ impl Application for Repo {
     }
 
     fn view(&mut self) -> Element<'_, Self::Message> {
-        let branches =
-            self.branches
-                .iter_mut()
-                .enumerate()
-                .fold(Column::new(), |col, (i, branch)| {
-                    col.push(
-                        branch
-                            .view()
-                            .map(move |message| Message::BranchMessage(i, message)),
-                    )
-                });
+        let branches = self.branches.iter_mut().enumerate().fold(
+            Column::new().width(Length::Units(260)),
+            |col, (i, branch)| {
+                col.push(
+                    branch
+                        .view()
+                        .map(move |message| Message::BranchMessage(i, message)),
+                )
+            },
+        );
 
         Container::new(Row::new().push(branches).push(self.commits.view()))
-            .style(style::Container)
+            .style(style::Window)
             .height(Length::Fill)
             .width(Length::Fill)
             .into()
@@ -116,6 +121,7 @@ enum BranchMessage {
 #[derive(Clone)]
 struct Branch {
     name: String,
+    head: bool,
     selected: bool,
 }
 
@@ -123,6 +129,7 @@ impl Branch {
     fn new(name: String) -> Self {
         Self {
             name,
+            head: false,
             selected: true,
         }
     }
@@ -134,11 +141,36 @@ impl Branch {
     }
 
     fn view(&mut self) -> Element<BranchMessage> {
-        let checkbox = Checkbox::new(self.selected, &self.name, BranchMessage::Selected)
-            // .width(Length::Fill)
-            .style(style::Branch);
+        let checkbox = Checkbox::new(self.selected, "", BranchMessage::Selected)
+            .style(style::BranchCheckbox)
+            .spacing(6);
+        let left_pad = Column::new().width(Length::Units(16));
+        let text = Text::new(&self.name)
+            .size(15)
+            .height(Length::Units(28))
+            .vertical_alignment(VerticalAlignment::Center);
+        let right_pad = Column::new().width(Length::Units(16));
 
-        Row::new().padding(2).push(checkbox).into()
+        let row = Row::new()
+            .height(Length::Units(28))
+            .padding(2)
+            .push(left_pad)
+            .push(checkbox)
+            .push(text)
+            .push(right_pad);
+
+        Container::new(row)
+            .style(if self.head {
+                if self.selected {
+                    style::Branch::Head
+                } else {
+                    style::Branch::UnselectedHead
+                }
+            } else {
+                style::Branch::Normal
+            })
+            .width(Length::Fill)
+            .into()
     }
 }
 
@@ -219,6 +251,7 @@ impl Commits {
 
         Scrollable::new(&mut self.scroll)
             .push(commits)
+            .width(Length::Fill)
             .height(Length::Fill)
             .into()
     }
