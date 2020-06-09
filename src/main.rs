@@ -4,12 +4,10 @@ use std::env::args;
 
 use git2::{BranchType, Repository};
 use iced::executor::Null;
-use iced::widget::container::Style;
 use iced::{
-    container, scrollable, Application, Checkbox, Column, Command, Container, Element, Length, Row,
+    scrollable, Application, Checkbox, Column, Command, Container, Element, Length, Row,
     Scrollable, Settings, Text, VerticalAlignment,
 };
-use iced_native::Widget;
 
 pub fn main() {
     Repo::run(Settings::default())
