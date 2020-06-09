@@ -140,7 +140,11 @@ impl Branch {
 
     fn view(&mut self) -> Element<BranchMessage> {
         let checkbox = Checkbox::new(self.selected, "", BranchMessage::Selected)
-            .style(style::BranchCheckbox)
+            .style(if self.head {
+                style::BranchCheckbox::Head
+            } else {
+                style::BranchCheckbox::Normal
+            })
             .spacing(6);
         let left_pad = Column::new().width(Length::Units(16));
         let text = Text::new(&self.name)
@@ -295,9 +299,12 @@ impl Commit {
     }
 
     fn view(&mut self) -> Element<CommitMessage> {
-        let text = Text::new(self.summary.clone());
+        let text = Text::new(self.summary.clone())
+            .size(15)
+            .height(Length::Units(28))
+            .vertical_alignment(VerticalAlignment::Center);
 
-        Row::new().padding(2).push(text).into()
+        Row::new().push(text).into()
     }
 }
 
